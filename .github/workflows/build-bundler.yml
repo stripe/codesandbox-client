@@ -1,0 +1,179 @@
+name: Build and Publish Bundler
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - '*'
+  pull_request:
+    branches: [ main ]
+  # Allow manual trigger
+  workflow_dispatch:
+  # Run monthly to keep the image updated
+  schedule:
+    - cron: '0 0 1 * *'  # Run on the 1st of every month
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Needed for creating releases
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '16'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install
+
+      - name: Build dependencies
+        run: yarn build:deps
+
+      - name: Build Sandpack
+        run: yarn build:sandpack
+
+      # Create a zip archive of the www folder
+      - name: Create Zip Archive
+        run: |
+          cd www
+          zip -r ../bundler.zip .
+          cd ..
+          echo "Created bundler.zip ($(du -h bundler.zip | cut -f1) in size)"
+
+      # Upload the zip as an artifact - UPDATED TO V4
+      - name: Upload Zip Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundler-files
+          path: bundler.zip
+          retention-days: 90
+
+      # Create a release if this is a tag or manually triggered
+      - name: Create Release
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: bundler.zip
+          name: Bundler Build ${{ github.run_number }}
+          tag_name: bundler-v${{ github.run_number }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ghcr.io/${{ github.repository }}/bundler
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+            type=schedule,pattern={{date 'YYYYMMDD'}}
+
+      # Create a dedicated directory for Docker build context
+      - name: Prepare Docker build context
+        run: |
+          echo "Preparing Docker build context..."
+          mkdir -p docker-context
+          # Check if www directory exists
+          if [ -d "www" ]; then
+            echo "Copying www directory to build context"
+            cp -r www docker-context/
+          else
+            echo "ERROR: www directory not found!"
+            echo "Current directory contents:"
+            ls -la
+            exit 1
+          fi
+          
+          # Create nginx config directory
+          mkdir -p docker-context/.github/nginx
+          
+          # Create a basic nginx config
+          echo 'server {
+            listen 80;
+            server_name _;
+            
+            # Enable gzip compression
+            gzip on;
+            gzip_types text/plain text/css application/javascript application/json;
+            
+            location / {
+                root /usr/share/nginx/html;
+                index index.html;
+                try_files $uri $uri/ /index.html;
+                
+                # Set CORS headers
+                add_header "Access-Control-Allow-Origin" "*" always;
+                add_header "Cache-Control" "public, max-age=86400, immutable";
+            }
+            
+            # Special handling for worker files
+            location ~ \.worker\.js$ {
+                root /usr/share/nginx/html;
+                add_header "Access-Control-Allow-Origin" "*" always;
+                add_header "Content-Type" "application/javascript" always;
+            }
+          }' > docker-context/.github/nginx/default.conf
+          
+          # Create Dockerfile.bundler in the new context
+          cat > docker-context/Dockerfile.bundler << 'EOF'
+          FROM nginx:alpine
+          COPY www /usr/share/nginx/html
+          COPY .github/nginx/default.conf /etc/nginx/conf.d/default.conf
+          EXPOSE 80
+          HEALTHCHECK --interval=30s --timeout=3s CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+          CMD ["nginx", "-g", "daemon off;"]
+          EOF
+          
+          echo "Contents of docker-context:"
+          ls -la docker-context
+          echo "Contents of docker-context/www (if it exists):"
+          ls -la docker-context/www || echo "www directory not found in docker-context!"
+
+      # Build Docker image with the new context
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: docker-context
+          file: docker-context/Dockerfile.bundler
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Add a step to check the directory structure
+      - name: Check directory structure
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Contents of current directory:"
+          ls -la
+          echo "Contents of www directory (if it exists):"
+          ls -la www || echo "www directory not found!"
+
+      - name: Update deployment status
+        run: |
+          echo "Docker image built and pushed: ghcr.io/${{ github.repository }}/bundler:latest"
+          echo "Image SHA tag: ghcr.io/${{ github.repository }}/bundler:sha-$(git rev-parse --short HEAD)"
+          echo "Zip archive is available as a build artifact and in the latest release"
