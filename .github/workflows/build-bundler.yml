@@ -3,10 +3,20 @@ name: Build and Publish Bundler
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/**.md'
+      - 'LICENSE'
     tags:
       - '*'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/**.md'
+      - 'LICENSE'
   # Allow manual trigger
   workflow_dispatch:
   # Run monthly to keep the image updated
