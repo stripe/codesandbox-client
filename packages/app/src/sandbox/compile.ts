@@ -979,19 +979,6 @@ async function compile(opts: CompileOptions) {
 
       manager.isFirstLoad = false;
     }
-
-    if (firstLoad) {
-      metrics
-        .persistMeasurements({
-          sandboxId,
-          cacheUsed: usedCache,
-          browser: navigator.userAgent,
-          version: VERSION,
-        })
-        .catch(() => {
-          /* Do nothing with the error */
-        });
-    }
   }
 
   if (!hadError && firstLoad) {
