@@ -84,10 +84,12 @@ If you encounter issues:
 If you want to build the bundler yourself:
 
 1. Clone this repository
-2. Run `yarn install`
+2. Run `yarn install` to install dependencies
 3. Run `yarn build:deps`
-4. Run `yarn build:sandpack`
-5. The built files will be in the `www` directory
+4. Run `yarn start` to build `codesandbox-browserfs` dependency (Then exit)
+  - Or, run: `lerna run build --scope @codesandbox/common --scope @codesandbox/components --scope app`
+5. Run `yarn build:sandpack`
+6. The built files will be in the `www` directory
 
 ## For More Information
 
