@@ -28,8 +28,8 @@ jobs:
   build:
     # <Stripe>
     # Disable the workflow
-    # </Stripe>
     if: false
+    # </Stripe>
 
     runs-on: ubuntu-latest
     permissions:
