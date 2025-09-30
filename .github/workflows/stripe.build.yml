@@ -1,36 +1,21 @@
-name: Build and Publish Bundler
-
+name: Stripe Build and Publish Image
 
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.github/**.md'
-      - 'LICENSE'
-    tags:
-      - '*'
-  pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.github/**.md'
-      - 'LICENSE'
   # Allow manual trigger
   workflow_dispatch:
-  # Run monthly to keep the image updated
-  schedule:
-    - cron: '0 0 1 * *'  # Run on the 1st of every month
+
+  # Automatic trigger on new commits on any branch
+  push:
+    branches:
+      - '**'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.github/**.md'
+      - 'LICENSE'
 
 jobs:
   build:
-    # <Stripe>
-    # Disable the workflow
-    # </Stripe>
-    if: false
-
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -43,6 +28,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Echo sanitized GitHub ref and commit SHA
+        run: |
+          echo "GitHub commit SHA: ${{ github.sha }}"
+          echo "GitHub ref name: ${{ github.ref_name }}"
+          SANITIZED_REF_NAME=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
+          echo "SANITIZED_REF_NAME=${SANITIZED_REF_NAME}"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -78,40 +70,15 @@ jobs:
           path: bundler.zip
           retention-days: 90
 
-      # Create a release if this is a tag or manually triggered
-      - name: Create Release
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: bundler.zip
-          name: Bundler Build ${{ github.run_number }}
-          tag_name: bundler-v${{ github.run_number }}
-          draft: false
-          prerelease: false
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v2
+      # Login to Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v4
-        with:
-          images: ghcr.io/${{ github.repository }}/bundler
-          tags: |
-            type=raw,value=latest
-            type=sha,format=short
-            type=schedule,pattern={{date 'YYYYMMDD'}}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # Create a dedicated directory for Docker build context
       - name: Prepare Docker build context
@@ -174,18 +141,19 @@ jobs:
           echo "Contents of docker-context/www (if it exists):"
           ls -la docker-context/www || echo "www directory not found in docker-context!"
 
-      # Build Docker image with the new context
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v4
+      # Build and push Docker images for each target
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v5
         with:
           context: docker-context
           file: docker-context/Dockerfile.bundler
           push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: |
+            stripe/librechat-sandpack:${{ github.sha }}
+            stripe/librechat-sandpack:${{ env.SANITIZED_REF_NAME }}-${{ github.sha }}
+            ${{ github.ref_name == 'main' && 'stripe/librechat-sandpack:latest' || '' }}
+          platforms: linux/arm64
+          target: node
 
       # Add a step to check the directory structure
       - name: Check directory structure
@@ -195,9 +163,3 @@ jobs:
           ls -la
           echo "Contents of www directory (if it exists):"
           ls -la www || echo "www directory not found!"
-
-      - name: Update deployment status
-        run: |
-          echo "Docker image built and pushed: ghcr.io/${{ github.repository }}/bundler:latest"
-          echo "Image SHA tag: ghcr.io/${{ github.repository }}/bundler:sha-$(git rev-parse --short HEAD)"
-          echo "Zip archive is available as a build artifact and in the latest release"
