@@ -140,15 +140,10 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: stripe/librechat-sandpack
-          # Tags:
-          # - commit SHA (no "sha-" prefix)
-          # - sanitized branch name (slashes replaced automatically)
           tags: |
             type=sha,format=long,prefix=
             type=ref,event=branch
-          # Add "latest" automatically on default branch only
-          flavor: |
-            latest=auto
+            type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push
         uses: docker/build-push-action@v5
