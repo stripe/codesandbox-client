@@ -29,13 +29,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Echo sanitized GitHub ref and commit SHA
-        run: |
-          echo "GitHub commit SHA: ${{ github.sha }}"
-          echo "GitHub ref name: ${{ github.ref_name }}"
-          SANITIZED_REF_NAME=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
-          echo "SANITIZED_REF_NAME=${SANITIZED_REF_NAME}"
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -141,25 +134,29 @@ jobs:
           echo "Contents of docker-context/www (if it exists):"
           ls -la docker-context/www || echo "www directory not found in docker-context!"
 
-      # Build and push Docker images for each target
-      - name: Build and push Docker images
+      # Generate image tags and labels
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: stripe/librechat-sandpack
+          # Tags:
+          # - commit SHA (no "sha-" prefix)
+          # - sanitized branch name (slashes replaced automatically)
+          tags: |
+            type=sha,format=long,prefix=
+            type=ref,event=branch
+          # Add "latest" automatically on default branch only
+          flavor: |
+            latest=auto
+
+      - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: docker-context
           file: docker-context/Dockerfile.bundler
-          push: true
-          tags: |
-            stripe/librechat-sandpack:${{ github.sha }}
-            stripe/librechat-sandpack:${{ env.SANITIZED_REF_NAME }}-${{ github.sha }}
-            ${{ github.ref_name == 'main' && 'stripe/librechat-sandpack:latest' || '' }}
-          platforms: linux/arm64
           target: node
-
-      # Add a step to check the directory structure
-      - name: Check directory structure
-        run: |
-          echo "Current directory: $(pwd)"
-          echo "Contents of current directory:"
-          ls -la
-          echo "Contents of www directory (if it exists):"
-          ls -la www || echo "www directory not found!"
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
