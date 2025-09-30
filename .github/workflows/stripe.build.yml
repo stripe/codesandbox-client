@@ -15,7 +15,7 @@ on:
       - 'LICENSE'
 
 jobs:
-  build:
+  stripe:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -155,7 +155,6 @@ jobs:
         with:
           context: docker-context
           file: docker-context/Dockerfile.bundler
-          target: node
           platforms: linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
