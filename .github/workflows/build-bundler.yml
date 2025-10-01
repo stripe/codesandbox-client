@@ -26,6 +26,11 @@ on:
 
 jobs:
   build:
+    # <Stripe>
+    # Disable the workflow
+    if: false
+    # </Stripe>
+
     runs-on: ubuntu-latest
     permissions:
       contents: write
