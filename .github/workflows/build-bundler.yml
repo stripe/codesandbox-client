@@ -27,9 +27,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
 
     env:
       NODE_ENV: development
