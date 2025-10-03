@@ -1,0 +1,12 @@
+name: foo
+
+on: issue_comment
+
+jobs:
+  echo-body:
+    runs-on: ubuntu-latest
+    steps:
+    -  env:
+        BODY: ${{ github.event.issue.body }}
+      run: |
+        echo '${{ env.BODY }}'
