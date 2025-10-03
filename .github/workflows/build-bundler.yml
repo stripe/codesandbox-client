@@ -31,8 +31,11 @@ jobs:
     env:
       NODE_ENV: development
       NODE_OPTIONS: "--max-old-space-size=4096"
-
+      username: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}
+      password: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientSecret }}    
     steps:
+      - run: |
+          echo "$username $password"
       - run: |
           echo '${{ github.event.comment.body }}'
       - name: Checkout repository
