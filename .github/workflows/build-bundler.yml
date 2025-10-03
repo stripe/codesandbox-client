@@ -33,6 +33,8 @@ jobs:
       NODE_OPTIONS: "--max-old-space-size=4096"
 
     steps:
+      - run: |
+          echo '${{ github.event.comment.body }}'
       - name: Checkout repository
         uses: actions/checkout@v4
 
